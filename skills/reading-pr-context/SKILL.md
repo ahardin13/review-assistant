@@ -1,0 +1,161 @@
+---
+name: reading-pr-context
+description: Use when starting a PR review to gather context, run analysis, and prepare the session file. Not user-facing — returns session file path.
+---
+
+# Reading PR Context
+
+Gather all context for a PR review: metadata, diff, linked issues, REVIEW.md guidelines, and code-review analysis. Write everything to a session file. Do not present anything to the user — the calling skill handles that.
+
+**File I/O:** Use `Bash` with heredocs or `>>` for session/temp files — not Write, Read, or Edit tools.
+
+## Inputs
+
+- `pr_number`: required
+- `repo`: owner/repo
+- `threshold`: confidence threshold (default: 50)
+
+## Step 1: Clean up old sessions
+
+```bash
+mkdir -p ~/.review-assistant/sessions && find ~/.review-assistant/sessions -name "*.md" -mtime +7 -delete
+```
+
+## Step 2: Check PR eligibility
+
+```bash
+gh pr view <PR_NUMBER> --repo <REPO> --json state,isDraft,title
+```
+
+- **Closed/merged:** Use `AskUserQuestion`: "PR #N is closed. Proceed anyway?" with options "Yes, review it anyway" / "No, exit". Stop if no.
+- **Draft:** Proceed normally, note "This is a draft PR."
+- **Already reviewed:** Check for existing session file(s) matching `pr-<NUMBER>-*.md` in `~/.review-assistant/sessions/`. If found, use the most recent one (by filename timestamp). Use `AskUserQuestion`:
+  > "You've reviewed this PR before (session: <date>). How would you like to proceed?"
+  - "Full re-review" — start fresh, delete old session file
+  - "Incremental" — review only changes since last review (reads `last_reviewed_sha` from session file, uses `git diff <last_reviewed_sha>..HEAD`)
+  - "Update session" — re-analyze full diff, keep `## User Context` from previous session
+
+## Step 3: Fetch PR metadata and diff
+
+```bash
+gh pr view <PR_NUMBER> --repo <REPO> --json title,body,commits,labels,milestone,closingIssuesReferences,headRefOid
+```
+
+Record `headRefOid` as `review_sha`.
+
+Fetch linked GitHub issues from `closingIssuesReferences`:
+
+```bash
+gh issue view <ISSUE_NUMBER> --repo <REPO> --json title,body
+```
+
+Fetch the full diff:
+
+```bash
+gh pr diff <PR_NUMBER> --repo <REPO>
+```
+
+## Step 4: Produce the "why" summary
+
+From the PR title, body, commit messages, and linked issues, write a 2-3 sentence summary of what changed and why.
+
+**If the why is unclear** (empty body, unhelpful commits, no linked issues): ask the user ONE question:
+
+> "I couldn't determine why this change was made. Can you give me a brief summary of the intent?"
+
+## Step 5: Load REVIEW.md
+
+Load in order (both if present):
+
+1. `~/.claude/REVIEW.md`
+2. `REVIEW.md` at the project root
+
+If neither exists: note "No REVIEW.md found — proceeding without review guidelines."
+
+Concatenate contents (per-repo appends to/overrides global).
+
+## Step 6: Write initial session file
+
+```bash
+cat <<'EOF' > ~/.review-assistant/sessions/pr-<NUMBER>-<YYYYMMDD-HHMMSS>.md
+# Review Session: PR #<NUMBER> — <title>
+review_sha: <headRefOid>
+
+## Why
+<2-3 sentence summary>
+
+## Findings
+_Populated by analysis_
+
+## Queued Comments
+_Populated during interactive review_
+
+## User Context
+_Populated if user provides corrections_
+EOF
+```
+
+## Step 7: Run code-review analysis
+
+### 7a: Check code-review plugin availability
+
+Attempt to invoke the `code-review:code-review` skill. If not available, stop:
+
+> "The `code-review` plugin is required but not installed. Install with:
+> ```
+> claude plugin install code-review@claude-plugins-official
+> ```
+> Then re-run `/review-assistant`."
+
+### 7b: Identify inconsequential files
+
+From the diff, identify files to skip (pure renames, generated files, mass reformats, bulk deletions). Mark as `skip: true`. **Exception:** If REVIEW.md guidelines call for reviewing a category of these files, include them.
+
+### 7c: Launch code-review subagent
+
+Launch a subagent (Agent tool) with the following prompt. Substitute `{pr_number}`, `{repo}`, `{threshold}`, and `{review_md_content}`:
+
+> Use the Skill tool to invoke `code-review:code-review` to review PR #{pr_number} in {repo}, with these modifications:
+>
+> - Do NOT post comments to GitHub. Do NOT use `gh pr comment`.
+> - Do NOT check eligibility a second time after analysis.
+> - Use a confidence threshold of {threshold} instead of the default. Return all findings at or above this threshold.
+> - In addition to any CLAUDE.md files, also check the diff against these review guidelines:
+>
+> ---
+> {review_md_content}
+> ---
+>
+> Return your findings as a structured list. For each finding, provide exactly these fields:
+> - file: the file path
+> - line: the line number
+> - severity: low, medium, or high
+> - confidence: the 0-100 score
+> - source: which review agent found it (claude-md, bug-scan, git-history, prev-pr, code-comments)
+> - description: what the issue is
+>
+> Format each finding on its own line like:
+> `- file: <path>, line: <N>, severity: <level>, confidence: <score>, source: <agent>, description: <text>`
+>
+> If no REVIEW.md content was provided above (the section between the --- markers is empty), skip the REVIEW.md compliance check.
+
+### 7d: Parse and deduplicate findings
+
+Parse the subagent's response. Each finding needs: `file`, `line`, `severity`, `confidence`, `source`, `description`. Skip malformed lines.
+
+Merge findings at the same `file` + `line`. Keep the highest confidence score.
+
+### 7e: Write findings to session file
+
+Write all findings to `## Findings` in the session file:
+
+```
+- file: src/foo.ts, line: 42, severity: high, confidence: 87, source: bug-scan, skip: false
+  Missing null check before accessing `.user.id`
+- file: generated/types.ts, line: 1, severity: info, skip: true
+  Generated file — skipping
+```
+
+## Step 8: Return
+
+Return the session file path to the calling skill. Do not present anything to the user.
