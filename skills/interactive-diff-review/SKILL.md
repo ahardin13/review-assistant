@@ -1,6 +1,6 @@
 ---
 name: interactive-diff-review
-description: Use when walking a user through code changes file-by-file during a PR review. Presents overview, handles walkthrough, collects decisions, and posts to GitHub.
+description: Use when walking a user through code changes file-by-file during a PR review. Not for automated or silent reviews.
 ---
 
 # Interactive Diff Review
