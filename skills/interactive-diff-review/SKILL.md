@@ -49,9 +49,9 @@ If corrections: append to `## User Context` in session file. Re-evaluate finding
 Fetch the full diff once and split by file:
 
 ```bash
-gh pr diff <PR_NUMBER> --repo <REPO> > /tmp/pr-<PR_NUMBER>-diff.txt
-mkdir -p /tmp/pr-<PR_NUMBER>-diffs
-awk -v dir="/tmp/pr-<PR_NUMBER>-diffs" '
+gh pr diff <PR_NUMBER> --repo <REPO> > ${CLAUDE_PLUGIN_DATA}/pr-<PR_NUMBER>-diff.txt
+mkdir -p ${CLAUDE_PLUGIN_DATA}/pr-<PR_NUMBER>-diffs
+awk -v dir="${CLAUDE_PLUGIN_DATA}/pr-<PR_NUMBER>-diffs" '
 /^diff --git / {
   if (file != "") close(file)
   f = $0; sub(/.* b\//, "", f); gsub(/\//, "__", f)
@@ -59,7 +59,7 @@ awk -v dir="/tmp/pr-<PR_NUMBER>-diffs" '
 }
 file != "" { print >> file }
 END { if (file != "") close(file) }
-' /tmp/pr-<PR_NUMBER>-diff.txt
+' ${CLAUDE_PLUGIN_DATA}/pr-<PR_NUMBER>-diff.txt
 ```
 
 Mention once: "Press ESC at any prompt to ask questions or discuss code."
@@ -71,7 +71,7 @@ For each file:
 ### 1. Read the pre-split diff
 
 ```bash
-cat "/tmp/pr-<PR_NUMBER>-diffs/$(echo '<filepath>' | tr '/' '__')"
+cat "${CLAUDE_PLUGIN_DATA}/pr-<PR_NUMBER>-diffs/$(echo '<filepath>' | tr '/' '__')"
 ```
 
 ### 2. File header

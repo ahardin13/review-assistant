@@ -74,7 +74,7 @@ Adapt the example above for your team's issue tracker and MCP tools.
 
 ## Session Files
 
-Review sessions are saved to `~/.review-assistant/sessions/` (as `pr-<NUMBER>-<YYYYMMDD-HHMMSS>.md`) and automatically cleaned up after 7 days. Sessions enable:
+Review sessions are saved to `${CLAUDE_PLUGIN_DATA}/sessions/` (as `pr-<NUMBER>-<YYYYMMDD-HHMMSS>.md`) and automatically cleaned up after 7 days. Sessions enable:
 
 - **Incremental reviews** — re-review only new changes since your last session
 - **Session continuity** — pick up where you left off if context is lost

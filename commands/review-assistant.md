@@ -1,5 +1,5 @@
 ---
-allowed-tools: Bash(gh pr view:*), Bash(gh pr diff:*), Bash(gh pr comment:*), Bash(gh pr review:*), Bash(gh pr list:*), Bash(gh issue view:*), Bash(gh api:*), Bash(git remote:*), Bash(git log:*), Bash(git blame:*), Bash(cat ~/.review-assistant/sessions:*), Bash(cat ~/.claude/REVIEW.md), Bash(cat REVIEW.md), Bash(cat /tmp/pr-:*), Bash(cat <<'EOF' > ~/.review-assistant/sessions/:*), Bash(cat <<'EOF' >> ~/.review-assistant/sessions/:*), Bash(mkdir -p ~/.review-assistant/sessions), Bash(find ~/.review-assistant/sessions:*), Bash(awk:*), Bash(wc:*)
+allowed-tools: Bash(gh pr view:*), Bash(gh pr diff:*), Bash(gh pr comment:*), Bash(gh pr review:*), Bash(gh pr list:*), Bash(gh issue view:*), Bash(gh api:*), Bash(git remote:*), Bash(git log:*), Bash(git blame:*), Bash(cat ${CLAUDE_PLUGIN_DATA}/sessions:*), Bash(cat ~/.claude/REVIEW.md), Bash(cat REVIEW.md), Bash(cat ${CLAUDE_PLUGIN_DATA}/pr-:*), Bash(cat <<'EOF' > ${CLAUDE_PLUGIN_DATA}/sessions/:*), Bash(cat <<'EOF' >> ${CLAUDE_PLUGIN_DATA}/sessions/:*), Bash(mkdir -p ${CLAUDE_PLUGIN_DATA}/sessions), Bash(find ${CLAUDE_PLUGIN_DATA}/sessions:*), Bash(awk:*), Bash(wc:*)
 description: Interactively review a pull request with the review-assistant
 ---
 
