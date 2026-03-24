@@ -1,0 +1,14 @@
+{
+  "name": "review-assistant",
+  "owner": {
+    "name": "Andy Hardin"
+  },
+  "plugins": [
+    {
+      "name": "review-assistant",
+      "description": "Interactive, human-in-the-loop PR review assistant",
+      "source": ".",
+      "version": "0.1.0"
+    }
+  ]
+}
