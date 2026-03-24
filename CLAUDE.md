@@ -11,7 +11,4 @@ The orchestrator must stay ignorant of implementation details to prevent Claude 
 
 ## Workflow
 
-Work on `dev` branch locally. When ready to push, squash-merge to main:
-```
-git checkout main && git merge --squash dev && git commit && git push && git branch -d dev
-```
+Commit to a working branch. Squash when merging to main.
