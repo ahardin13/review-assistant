@@ -1,6 +1,6 @@
 {
   "name": "review-assistant",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Interactive, human-in-the-loop PR review assistant",
   "author": {
     "name": "Andy Hardin"
