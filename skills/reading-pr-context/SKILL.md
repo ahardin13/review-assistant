@@ -1,6 +1,6 @@
 ---
 name: reading-pr-context
-description: Use when starting a PR review to gather context, run analysis, and prepare the session file. Not user-facing — returns session file path.
+description: Use when starting a PR review and the session file needs to be created or refreshed. Not user-facing — invoked by the orchestrator only.
 ---
 
 # Reading PR Context
