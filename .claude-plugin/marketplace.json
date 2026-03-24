@@ -7,7 +7,7 @@
     {
       "name": "review-assistant",
       "description": "Interactive, human-in-the-loop PR review assistant",
-      "source": ".",
+      "source": "./",
       "version": "0.1.0"
     }
   ]
