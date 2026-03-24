@@ -11,4 +11,6 @@ The orchestrator must stay ignorant of implementation details to prevent Claude 
 
 ## Workflow
 
+Use /writing-skills when creating or modifying skill files.
+
 Commit to a working branch. Squash when merging to main.
