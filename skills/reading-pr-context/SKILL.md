@@ -111,14 +111,12 @@ Attempt to invoke the `code-review:code-review` skill. If not available, stop:
 
 From the diff, identify files to skip (pure renames, generated files, mass reformats, bulk deletions). Mark as `skip: true`. **Exception:** If REVIEW.md guidelines call for reviewing a category of these files, include them.
 
-### 7c: Launch code-review subagent
+### 7c: Dispatch code-review-analyzer agent
 
-Launch a subagent (Agent tool) with the following prompt. Substitute `{pr_number}`, `{repo}`, `{threshold}`, and `{review_md_content}`:
+Dispatch the `code-review-analyzer` agent (Agent tool with `subagent_type="review-assistant:code-review-analyzer"`) with the following task. Substitute `{pr_number}`, `{repo}`, `{threshold}`, and `{review_md_content}`:
 
-> Use the Skill tool to invoke `code-review:code-review` to review PR #{pr_number} in {repo}, with these modifications:
+> Review PR #{pr_number} in {repo}.
 >
-> - Do NOT post comments to GitHub. Do NOT use `gh pr comment`.
-> - Do NOT check eligibility a second time after analysis.
 > - Use a confidence threshold of {threshold} instead of the default. Return all findings at or above this threshold.
 > - In addition to any CLAUDE.md files, also check the diff against these review guidelines:
 >
@@ -126,18 +124,7 @@ Launch a subagent (Agent tool) with the following prompt. Substitute `{pr_number
 > {review_md_content}
 > ---
 >
-> Return your findings as a structured list. For each finding, provide exactly these fields:
-> - file: the file path
-> - line: the line number
-> - severity: low, medium, or high
-> - confidence: the 0-100 score
-> - source: which review agent found it (claude-md, bug-scan, git-history, prev-pr, code-comments)
-> - description: what the issue is
->
-> Format each finding on its own line like:
-> `- file: <path>, line: <N>, severity: <level>, confidence: <score>, source: <agent>, description: <text>`
->
-> If no REVIEW.md content was provided above (the section between the --- markers is empty), skip the REVIEW.md compliance check.
+> If no review guidelines were provided above (the section between the --- markers is empty), skip the review guidelines compliance check.
 
 ### 7d: Parse and deduplicate findings
 
