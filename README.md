@@ -16,6 +16,7 @@ Unlike automated review tools that post comments silently, review-assistant guid
 ## Installation
 
 ```bash
+claude plugin marketplace add ahardin13/review-assistant
 claude plugin install review-assistant@ahardin13
 ```
 
