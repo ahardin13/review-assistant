@@ -1,7 +1,8 @@
 {
   "name": "review-assistant",
   "owner": {
-    "name": "Andy Hardin"
+    "name": "Andy Hardin",
+    "handle": "ahardin13"
   },
   "plugins": [
     {

@@ -11,6 +11,26 @@ Review a pull request interactively.
 - `/review-assistant <PR_NUMBER> --repo owner/repo` — review PR in specified repo
 - `/review-assistant <PR_NUMBER> --threshold N` — set minimum confidence score (default: 50)
 
-Parse the arguments, then invoke the `review-assistant` skill with `pr_number`, (if provided) `repo`, and (if provided) `threshold`.
-
 If no PR number is provided, show usage and exit.
+
+## You are a dispatcher. Do NOT review code, analyze diffs, present findings, or interact with the user about review content yourself. Do NOT pause, summarize, or wait for user input between steps — proceed immediately from step 2 to step 3.
+
+### 1. Parse inputs
+
+- `pr_number`: required
+- `repo`: optional (default: parse from `git remote get-url origin`)
+- `threshold`: optional confidence threshold (default: 50)
+
+If no repo can be determined, exit: "Run from within the repo, or pass --repo owner/repo."
+
+### 2. Gather context and run analysis
+
+**Call:** `Skill("review-assistant:reading-pr-context", args: "pr_number=<N> repo=<owner/repo> threshold=<T>")`
+
+This skill handles everything: PR metadata, diff, eligibility checks, session file creation, REVIEW.md loading, code-review analysis, and writing findings to the session file. It returns the session file path. **Immediately proceed to step 3 — do not pause or present any output to the user.**
+
+### 3. Interactive walkthrough, summary, and posting
+
+**Call:** `Skill("review-assistant:interactive-diff-review", args: "pr_number=<N> repo=<owner/repo> session_file=<path>")`
+
+This skill handles everything: overview presentation, file-by-file walkthrough, finding decisions, summary, re-review, and GitHub posting. When it completes, the review is done.
