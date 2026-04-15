@@ -8,7 +8,10 @@
     {
       "name": "review-assistant",
       "description": "Interactive, human-in-the-loop PR review assistant",
-      "source": "./",
+      "source": {
+        "source": "url",
+        "url": "https://github.com/ahardin13/review-assistant.git"
+      },
       "version": "0.2.0"
     }
   ]
