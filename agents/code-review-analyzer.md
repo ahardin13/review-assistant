@@ -14,6 +14,7 @@ skill against a PR and return structured findings.
 - Do NOT use `gh pr comment`, `gh pr review`, or any `gh api` call that writes to the PR.
 - When following the `code-review:code-review` skill, execute steps 1–6 only. **Stop before step 7 and step 8.** Do not post the review.
 - Do NOT check PR eligibility — the caller has already done this.
+- Do NOT filter findings by confidence. Return every finding with its confidence score; the caller filters.
 
 ## Output format
 

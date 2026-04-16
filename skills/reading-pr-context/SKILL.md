@@ -113,11 +113,11 @@ From the diff, identify files to skip (pure renames, generated files, mass refor
 
 ### 7c: Dispatch code-review-analyzer agent
 
-Dispatch the `code-review-analyzer` agent (Agent tool with `subagent_type="review-assistant:code-review-analyzer"`) with the following task. Substitute `{pr_number}`, `{repo}`, `{threshold}`, and `{review_md_content}`:
+Dispatch the `code-review-analyzer` agent (Agent tool with `subagent_type="review-assistant:code-review-analyzer"`) with the following task. Substitute `{pr_number}`, `{repo}`, and `{review_md_content}`:
 
 > Review PR #{pr_number} in {repo}.
 >
-> - Use a confidence threshold of {threshold} instead of the default. Return all findings at or above this threshold.
+> - Use a confidence threshold of 0 — return EVERY finding the code-review skill produces, regardless of confidence. The caller filters later; do not filter here.
 > - In addition to any CLAUDE.md files, also check the diff against these review guidelines:
 >
 > ---
@@ -134,14 +134,27 @@ Merge findings at the same `file` + `line`. Keep the highest confidence score.
 
 ### 7e: Write findings to session file
 
-Write all findings to `## Findings` in the session file:
+Record the active threshold for later consumers:
 
 ```
+threshold: <T>
+```
+
+Partition findings by confidence. Write those with `confidence >= threshold` under `## Findings`, and those below threshold under `## Below Threshold` (same format, minus `skip`). Both sections use this shape:
+
+```
+## Findings
 - file: src/foo.ts, line: 42, severity: high, confidence: 87, source: bug-scan, skip: false
   Missing null check before accessing `.user.id`
-- file: generated/types.ts, line: 1, severity: info, skip: true
+- file: generated/types.ts, line: 1, severity: info, confidence: 100, source: claude-md, skip: true
   Generated file — skipping
+
+## Below Threshold
+- file: src/bar.ts, line: 15, severity: low, confidence: 30, source: code-comments
+  Magic number 86400 could be a named constant
 ```
+
+Interactive consumers read only `## Findings`. Auto-mode reads both so it can report what got filtered.
 
 ## Step 8: Return
 
