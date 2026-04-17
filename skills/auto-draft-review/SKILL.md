@@ -18,7 +18,7 @@ Post analyzer findings as a pending GitHub review so the user can finalize on gi
 ## Step 1: Fetch the diff
 
 ```bash
-gh pr diff <PR_NUMBER> --repo <REPO> > ${CLAUDE_PLUGIN_DATA}/pr-<PR_NUMBER>-diff.txt
+gh pr diff <PR_NUMBER> --repo <REPO> > $HOME/.local/state/review-assistant/pr-<PR_NUMBER>-diff.txt
 ```
 
 Read the session file separately for metadata (Why summary, `review_sha`, `threshold`, skipped files). Findings themselves flow through the classifier in the next step — do not re-parse them by hand.
@@ -29,10 +29,10 @@ Run the shared classifier against the `## Findings` section:
 
 ```bash
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/classify-and-verify.py" \
-  --diff "${CLAUDE_PLUGIN_DATA}/pr-<PR_NUMBER>-diff.txt" \
+  --diff "$HOME/.local/state/review-assistant/pr-<PR_NUMBER>-diff.txt" \
   --session "<session_file>" \
   --section findings \
-  > ${CLAUDE_PLUGIN_DATA}/pr-<PR_NUMBER>-classified.json
+  > $HOME/.local/state/review-assistant/pr-<PR_NUMBER>-classified.json
 ```
 
 The script emits `{ inline, fallback, suspect, stats }` where each bucket means:

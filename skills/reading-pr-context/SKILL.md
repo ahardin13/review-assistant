@@ -17,8 +17,10 @@ Gather all context for a PR review: metadata, diff, linked issues, REVIEW.md gui
 
 ## Step 1: Clean up old sessions
 
+Data dir: `$HOME/.local/state/review-assistant` (kept OUT of `~/.claude/` so "always allow" permission rules persist — paths under `~/.claude/` are treated as sensitive by Claude Code and re-prompt every session).
+
 ```bash
-mkdir -p ${CLAUDE_PLUGIN_DATA}/sessions && find ${CLAUDE_PLUGIN_DATA}/sessions -name "*.md" -mtime +7 -delete
+mkdir -p $HOME/.local/state/review-assistant/sessions && find $HOME/.local/state/review-assistant/sessions -name "*.md" -mtime +7 -delete
 ```
 
 ## Step 2: Check PR eligibility
@@ -29,7 +31,7 @@ gh pr view <PR_NUMBER> --repo <REPO> --json state,isDraft,title
 
 - **Closed/merged:** Use `AskUserQuestion`: "PR #N is closed. Proceed anyway?" with options "Yes, review it anyway" / "No, exit". Stop if no.
 - **Draft:** Proceed normally, note "This is a draft PR."
-- **Already reviewed:** Check for existing session file(s) matching `pr-<NUMBER>-*.md` in `${CLAUDE_PLUGIN_DATA}/sessions/`. If found, use the most recent one (by filename timestamp). Use `AskUserQuestion`:
+- **Already reviewed:** Check for existing session file(s) matching `pr-<NUMBER>-*.md` in `$HOME/.local/state/review-assistant/sessions/`. If found, use the most recent one (by filename timestamp). Use `AskUserQuestion`:
   > "You've reviewed this PR before (session: <date>). How would you like to proceed?"
   - "Full re-review" — start fresh, delete old session file
   - "Incremental" — review only changes since last review (reads `last_reviewed_sha` from session file, uses `git diff <last_reviewed_sha>..HEAD`)
@@ -77,7 +79,7 @@ Concatenate contents (per-repo appends to/overrides global).
 ## Step 6: Write initial session file
 
 ```bash
-cat <<'EOF' > ${CLAUDE_PLUGIN_DATA}/sessions/pr-<NUMBER>-<YYYYMMDD-HHMMSS>.md
+cat <<'EOF' > $HOME/.local/state/review-assistant/sessions/pr-<NUMBER>-<YYYYMMDD-HHMMSS>.md
 # Review Session: PR #<NUMBER> — <title>
 review_sha: <headRefOid>
 

@@ -49,9 +49,9 @@ If corrections: append to `## User Context` in session file. Re-evaluate finding
 Fetch the full diff once and split by file:
 
 ```bash
-gh pr diff <PR_NUMBER> --repo <REPO> > ${CLAUDE_PLUGIN_DATA}/pr-<PR_NUMBER>-diff.txt
-mkdir -p ${CLAUDE_PLUGIN_DATA}/pr-<PR_NUMBER>-diffs
-awk -v dir="${CLAUDE_PLUGIN_DATA}/pr-<PR_NUMBER>-diffs" '
+gh pr diff <PR_NUMBER> --repo <REPO> > $HOME/.local/state/review-assistant/pr-<PR_NUMBER>-diff.txt
+mkdir -p $HOME/.local/state/review-assistant/pr-<PR_NUMBER>-diffs
+awk -v dir="$HOME/.local/state/review-assistant/pr-<PR_NUMBER>-diffs" '
 /^diff --git / {
   if (file != "") close(file)
   f = $0; sub(/.* b\//, "", f); gsub(/\//, "__", f)
@@ -59,7 +59,7 @@ awk -v dir="${CLAUDE_PLUGIN_DATA}/pr-<PR_NUMBER>-diffs" '
 }
 file != "" { print >> file }
 END { if (file != "") close(file) }
-' ${CLAUDE_PLUGIN_DATA}/pr-<PR_NUMBER>-diff.txt
+' $HOME/.local/state/review-assistant/pr-<PR_NUMBER>-diff.txt
 ```
 
 Mention once: "Press ESC at any prompt to ask questions or discuss code."
@@ -71,7 +71,7 @@ For each file:
 ### 1. Read the pre-split diff
 
 ```bash
-cat "${CLAUDE_PLUGIN_DATA}/pr-<PR_NUMBER>-diffs/$(echo '<filepath>' | tr '/' '__')"
+cat "$HOME/.local/state/review-assistant/pr-<PR_NUMBER>-diffs/$(echo '<filepath>' | tr '/' '__')"
 ```
 
 ### 2. File header
@@ -182,12 +182,12 @@ If different from `review_sha` in session file, warn user:
 Build a temp session fragment containing only the queued comments (one per line, same row format as `## Findings`, including the `code:` anchor carried through from the original finding). Write it to a scratch file, then run:
 
 ```bash
-gh pr diff <PR_NUMBER> --repo <REPO> > ${CLAUDE_PLUGIN_DATA}/pr-<PR_NUMBER>-diff.txt
+gh pr diff <PR_NUMBER> --repo <REPO> > $HOME/.local/state/review-assistant/pr-<PR_NUMBER>-diff.txt
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/classify-and-verify.py" \
-  --diff "${CLAUDE_PLUGIN_DATA}/pr-<PR_NUMBER>-diff.txt" \
-  --session "${CLAUDE_PLUGIN_DATA}/pr-<PR_NUMBER>-queued.md" \
+  --diff "$HOME/.local/state/review-assistant/pr-<PR_NUMBER>-diff.txt" \
+  --session "$HOME/.local/state/review-assistant/pr-<PR_NUMBER>-queued.md" \
   --section findings \
-  > ${CLAUDE_PLUGIN_DATA}/pr-<PR_NUMBER>-queued-classified.json
+  > $HOME/.local/state/review-assistant/pr-<PR_NUMBER>-queued-classified.json
 ```
 
 Use the classifier's buckets:
