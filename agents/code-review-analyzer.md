@@ -1,7 +1,7 @@
 ---
 name: code-review-analyzer
 description: Use when the reading-pr-context skill needs to run automated code analysis against a PR diff.
-tools: Skill, Read, Grep, Glob, Bash(gh pr view:*), Bash(gh pr diff:*), Bash(gh pr list:*), Bash(gh issue view:*), Bash(gh issue list:*), Bash(gh search:*), Bash(gh api repos/*/contents:*), Bash(gh api repos/*/pulls/*/files:*), Bash(gh api repos/*/commits:*), Bash(git log:*), Bash(git blame:*), Bash(git show:*)
+tools: Skill, Read, Read(/tmp/pr*.diff), Read(/tmp/pr*.patch), Read($HOME/.local/state/review-assistant/**), Grep, Glob, Bash(gh pr view:*), Bash(gh pr diff:*), Bash(gh pr list:*), Bash(gh issue view:*), Bash(gh issue list:*), Bash(gh search:*), Bash(gh api repos/*/contents:*), Bash(gh api repos/*/pulls/*/files:*), Bash(gh api repos/*/commits:*), Bash(git log:*), Bash(git blame:*), Bash(git show:*)
 model: inherit
 ---
 
