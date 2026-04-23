@@ -17,8 +17,10 @@ Walk the user through PR changes: present an overview, step through files one at
 
 Read the session file to extract:
 - **Why**: summary from `## Why`
+- **threshold**: the `threshold: <N>` line at the top
 - **files**: non-skipped files from `## Findings` (ordered: modified first, then new, then deleted)
-- **findings**: map of `file -> [{ line, severity, confidence, description }]` from entries where `skip: false`
+- **findings**: map of `file -> [{ line, severity, confidence, source, description, code, in_diff }]` from entries where `skip: false` under `## Findings`. The `code` and `in_diff` fields are the line-text anchor used by `classify-and-verify.py` at post time; `interactive-diff-review` surfaces them in Phase 3 to flag uncertain anchors before the user queues a comment.
+- **below_threshold**: findings from `## Below Threshold` — not shown during the walkthrough, but the orchestrator may reference them in reporting
 - **skipped**: files with `skip: true`
 
 ## Phase 1: Overview

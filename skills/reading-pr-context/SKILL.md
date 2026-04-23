@@ -142,7 +142,7 @@ Merge findings at the same `file` + `line`. Keep the highest confidence score.
 
 Before writing findings to the session file, attach a line-text anchor so downstream consumers can verify that comments land on the right lines.
 
-Build an index of the fetched diff: for each file, walk the hunk bodies and record `(right_line) -> line_text` for `+` and ` ` lines, and `(left_line) -> line_text` for `-` and ` ` lines. Mechanical; the `scripts/classify-and-verify.py` helper parses this same way — do NOT reimplement inline. Instead, shell out to it later.
+Build an in-memory index of the fetched diff: for each file, walk the hunk bodies and record `(right_line) -> line_text` for `+` and ` ` lines, and `(left_line) -> line_text` for `-` and ` ` lines. This is a lightweight read-only index used only for anchor lookup during session-file writing — do NOT re-derive it at post time. The full classifier that enforces line anchoring (`scripts/classify-and-verify.py`, invoked by `auto-draft-review` and `interactive-diff-review` at POST time) parses the diff the same way; do not reimplement its classification logic here.
 
 For each finding, look up `(file, line)` in the RIGHT-side index first, then LEFT-side:
 

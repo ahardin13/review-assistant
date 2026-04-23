@@ -95,7 +95,7 @@ def parse_diff(diff_text: str) -> dict[str, FileDiff]:
             left_line += 1
             continue
 
-        marker, _, body = raw[0], raw[0], raw[1:]
+        marker, body = raw[0], raw[1:]
         if marker == "+":
             current.right[right_line] = body
             right_line += 1
@@ -119,7 +119,7 @@ def parse_diff(diff_text: str) -> dict[str, FileDiff]:
 
 # ---- session parsing ------------------------------------------------------
 
-FINDING_HEAD_RE = re.compile(r"^- file: (?P<file>[^,]+?), line: (?P<line>\d+)(?P<rest>.*)$")
+FINDING_HEAD_RE = re.compile(r"^- file: (?P<file>.+?), line: (?P<line>\d+)(?P<rest>.*)$")
 KV_RE = re.compile(r"(\w+): ([^,]+)")
 
 
