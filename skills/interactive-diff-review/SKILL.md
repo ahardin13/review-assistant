@@ -17,8 +17,10 @@ Walk the user through PR changes: present an overview, step through files one at
 
 Read the session file to extract:
 - **Why**: summary from `## Why`
+- **threshold**: the `threshold: <N>` line at the top
 - **files**: non-skipped files from `## Findings` (ordered: modified first, then new, then deleted)
-- **findings**: map of `file -> [{ line, severity, confidence, description }]` from entries where `skip: false`
+- **findings**: map of `file -> [{ line, severity, confidence, source, description, code, in_diff }]` from entries where `skip: false` under `## Findings`. The `code` and `in_diff` fields are the line-text anchor used by `classify-and-verify.py` at post time; `interactive-diff-review` surfaces them in Phase 3 to flag uncertain anchors before the user queues a comment.
+- **below_threshold**: findings from `## Below Threshold` — not shown during the walkthrough, but the orchestrator may reference them in reporting
 - **skipped**: files with `skip: true`
 
 ## Phase 1: Overview
@@ -49,9 +51,9 @@ If corrections: append to `## User Context` in session file. Re-evaluate finding
 Fetch the full diff once and split by file:
 
 ```bash
-gh pr diff <PR_NUMBER> --repo <REPO> > ${CLAUDE_PLUGIN_DATA}/pr-<PR_NUMBER>-diff.txt
-mkdir -p ${CLAUDE_PLUGIN_DATA}/pr-<PR_NUMBER>-diffs
-awk -v dir="${CLAUDE_PLUGIN_DATA}/pr-<PR_NUMBER>-diffs" '
+gh pr diff <PR_NUMBER> --repo <REPO> > $HOME/.local/state/review-assistant/pr-<PR_NUMBER>-diff.txt
+mkdir -p $HOME/.local/state/review-assistant/pr-<PR_NUMBER>-diffs
+awk -v dir="$HOME/.local/state/review-assistant/pr-<PR_NUMBER>-diffs" '
 /^diff --git / {
   if (file != "") close(file)
   f = $0; sub(/.* b\//, "", f); gsub(/\//, "__", f)
@@ -59,7 +61,7 @@ awk -v dir="${CLAUDE_PLUGIN_DATA}/pr-<PR_NUMBER>-diffs" '
 }
 file != "" { print >> file }
 END { if (file != "") close(file) }
-' ${CLAUDE_PLUGIN_DATA}/pr-<PR_NUMBER>-diff.txt
+' $HOME/.local/state/review-assistant/pr-<PR_NUMBER>-diff.txt
 ```
 
 Mention once: "Press ESC at any prompt to ask questions or discuss code."
@@ -71,7 +73,7 @@ For each file:
 ### 1. Read the pre-split diff
 
 ```bash
-cat "${CLAUDE_PLUGIN_DATA}/pr-<PR_NUMBER>-diffs/$(echo '<filepath>' | tr '/' '__')"
+cat "$HOME/.local/state/review-assistant/pr-<PR_NUMBER>-diffs/$(echo '<filepath>' | tr '/' '__')"
 ```
 
 ### 2. File header
@@ -100,10 +102,16 @@ If condensed diff exceeds 60 lines, break at logical boundaries with "Continue" 
 
 ### 4. Present findings one at a time
 
+Before presenting, sanity-check the line anchor against the diff:
+
+- The finding carries `code: \`<text>\`` (and `in_diff: true|false`) from `reading-pr-context`.
+- Confirm the diff snippet you just showed contains that exact text at the claimed line. Mark it explicitly, e.g. `> 42: const id = user.id;`.
+- If `in_diff: false`, or the `code` text isn't present at (or within ±3 of) the claimed line, **flag it in the question**: "⚠ Line anchor is uncertain — the analyzer said line 42 but the diff shows a different line at that number." The user may dismiss or re-target.
+
 **Put the full finding inside the `question` field of `AskUserQuestion`** (text above the prompt can get cut off):
 
 ```
-question: "Finding 1 (confidence: 70): The error detection uses `error.message.startsWith(...)` — a string coupling across a package boundary. If the message changes, BAD_USER_INPUT wrapping silently breaks.\n\nWhat would you like to do?"
+question: "Finding 1 (confidence: 70): The error detection uses `error.message.startsWith(...)` — a string coupling across a package boundary. If the message changes, BAD_USER_INPUT wrapping silently breaks.\n\nTarget: src/foo.ts:42 — `if (error.message.startsWith('Bad'))`\n\nWhat would you like to do?"
 options:
   - label: "Comment"
     description: "<specific action, e.g. 'Queue a comment suggesting a typed error class'>"
@@ -111,7 +119,7 @@ options:
     description: "<specific reason, e.g. 'Low risk — string unlikely to change'>"
 ```
 
-Make descriptions **specific to the finding**.
+Make descriptions **specific to the finding**. Always include the `Target: <file>:<line> — <code snippet>` line so the user can confirm where the comment will land.
 
 ### 5. Handle response
 
@@ -171,9 +179,26 @@ If different from `review_sha` in session file, warn user:
 - "Post anyway" — use original `review_sha` as `commit_id`
 - "Abandon" — exit
 
-**Classify comments as inline or fallback:**
+**Classify comments via the shared verifier:**
 
-Parse diff hunks (`@@ -a,b +c,d @@`). RIGHT-side lines `c` to `c+d-1` accept inline comments (`side: "RIGHT"`). LEFT-side for deleted lines. Lines outside any hunk go in the review body as fallback.
+Build a temp session fragment containing only the queued comments (one per line, same row format as `## Findings`, including the `code:` anchor carried through from the original finding). Write it to a scratch file, then run:
+
+```bash
+gh pr diff <PR_NUMBER> --repo <REPO> > $HOME/.local/state/review-assistant/pr-<PR_NUMBER>-diff.txt
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/classify-and-verify.py" \
+  --diff "$HOME/.local/state/review-assistant/pr-<PR_NUMBER>-diff.txt" \
+  --session "$HOME/.local/state/review-assistant/pr-<PR_NUMBER>-queued.md" \
+  --section findings \
+  > $HOME/.local/state/review-assistant/pr-<PR_NUMBER>-queued-classified.json
+```
+
+Use the classifier's buckets:
+
+- **inline** — post as `comments[]` entries with the verified `path`, `line`, and `side` from the bucket (not the original values — the verifier may have re-anchored by ±3 lines).
+- **fallback** — include in the review body.
+- **suspect** — include in the review body under an "uncertain line anchor" header, so the reader knows the number may be stale.
+
+Do NOT hand-roll hunk classification. Do NOT post a comment whose `line` or `side` came from anywhere other than the classifier's `inline` bucket.
 
 **Post review:**
 
@@ -183,7 +208,7 @@ gh api repos/<OWNER>/<REPO>/pulls/<PR_NUMBER>/reviews \
   --input - << 'EOF'
 {
   "commit_id": "<review_sha>",
-  "body": "<overall note + fallback comments>",
+  "body": "<overall note + fallback comments + suspect comments>",
   "event": "<APPROVE|REQUEST_CHANGES|COMMENT>",
   "comments": [
     {
@@ -197,9 +222,8 @@ gh api repos/<OWNER>/<REPO>/pulls/<PR_NUMBER>/reviews \
 EOF
 ````
 
-- `side: "RIGHT"` for added/modified lines. `"LEFT"` for deleted lines only.
 - Format all bodies with GitHub-flavored Markdown.
-- Fallback comments in `body` are never dropped.
+- Fallback and suspect comments in `body` are never dropped.
 
 After posting, update session file: `last_reviewed_sha: <current SHA>`
 

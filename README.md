@@ -75,10 +75,30 @@ Adapt the example above for your team's issue tracker and MCP tools.
 
 ## Session Files
 
-Review sessions are saved to `${CLAUDE_PLUGIN_DATA}/sessions/` (as `pr-<NUMBER>-<YYYYMMDD-HHMMSS>.md`) and automatically cleaned up after 7 days. Sessions enable:
+Review sessions are saved to `$HOME/.local/state/review-assistant/sessions/` (as `pr-<NUMBER>-<YYYYMMDD-HHMMSS>.md`) and automatically cleaned up after 7 days. Sessions enable:
 
 - **Incremental reviews** — re-review only new changes since your last session
 - **Session continuity** — pick up where you left off if context is lost
+
+Session state lives outside `~/.claude/` intentionally — Claude Code treats anything under `~/.claude/` as sensitive and re-prompts for every read/write, even after you select "always allow."
+
+## Reducing permission prompts
+
+The `/review-assistant` slash command pre-approves the paths and commands it needs, so invoking it should be quiet after first run. If you invoke the underlying skills directly (e.g. via `Skill("review-assistant:…")`) and want the same, add this to `~/.claude/settings.json`:
+
+```json
+{
+  "permissions": {
+    "allow": [
+      "Read($HOME/.local/state/review-assistant/**)",
+      "Edit($HOME/.local/state/review-assistant/**)",
+      "Write($HOME/.local/state/review-assistant/**)",
+      "Bash(mkdir -p $HOME/.local/state/review-assistant:*)",
+      "Bash(find $HOME/.local/state/review-assistant/:*)"
+    ]
+  }
+}
+```
 
 ## License
 

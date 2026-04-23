@@ -1,7 +1,7 @@
 ---
 name: code-review-analyzer
 description: Use when the reading-pr-context skill needs to run automated code analysis against a PR diff.
-tools: Skill, Read, Grep, Glob, Bash(gh pr view:*), Bash(gh pr diff:*), Bash(gh pr list:*), Bash(gh issue view:*), Bash(gh issue list:*), Bash(gh search:*), Bash(gh api repos/*/contents:*), Bash(gh api repos/*/pulls/*/files:*), Bash(gh api repos/*/commits:*), Bash(git log:*), Bash(git blame:*), Bash(git show:*)
+tools: Skill, Read, Read(/tmp/pr*.diff), Read(/tmp/pr*.patch), Read($HOME/.local/state/review-assistant/**), Read(~/.local/state/review-assistant/**), Grep, Glob, Bash(gh pr view:*), Bash(gh pr diff:*), Bash(gh pr list:*), Bash(gh issue view:*), Bash(gh issue list:*), Bash(gh search:*), Bash(gh api repos/*/contents:*), Bash(gh api repos/*/pulls/*/files:*), Bash(gh api repos/*/commits:*), Bash(git log:*), Bash(git blame:*), Bash(git show:*)
 model: inherit
 ---
 
@@ -14,6 +14,8 @@ skill against a PR and return structured findings.
 - Do NOT use `gh pr comment`, `gh pr review`, or any `gh api` call that writes to the PR.
 - When following the `code-review:code-review` skill, execute steps 1–6 only. **Stop before step 7 and step 8.** Do not post the review.
 - Do NOT check PR eligibility — the caller has already done this.
+- Do NOT filter findings by confidence. Return every finding with its confidence score; the caller filters.
+- Do NOT write scratch diffs to `/tmp/`. The caller passes a pre-fetched diff path under `$HOME/.local/state/review-assistant/` — use that. `/tmp/` reads trigger a per-session permission prompt and you cannot pre-approve them.
 
 ## Output format
 
