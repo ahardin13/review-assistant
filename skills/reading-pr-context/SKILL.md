@@ -51,11 +51,14 @@ Fetch linked GitHub issues from `closingIssuesReferences`:
 gh issue view <ISSUE_NUMBER> --repo <REPO> --json title,body
 ```
 
-Fetch the full diff:
+Fetch the full diff and cache it for reuse by downstream skills and the analyzer subagent. Writing to our data dir (rather than `/tmp/`) keeps the path inside the pre-approved allowlist so subagents don't get a per-session permission prompt:
 
 ```bash
-gh pr diff <PR_NUMBER> --repo <REPO>
+mkdir -p $HOME/.local/state/review-assistant
+gh pr diff <PR_NUMBER> --repo <REPO> > $HOME/.local/state/review-assistant/pr-<PR_NUMBER>-diff.txt
 ```
+
+Refer to this path as `<DIFF_PATH>` in later steps.
 
 ## Step 4: Produce the "why" summary
 
@@ -115,10 +118,11 @@ From the diff, identify files to skip (pure renames, generated files, mass refor
 
 ### 7c: Dispatch code-review-analyzer agent
 
-Dispatch the `code-review-analyzer` agent (Agent tool with `subagent_type="review-assistant:code-review-analyzer"`) with the following task. Substitute `{pr_number}`, `{repo}`, and `{review_md_content}`:
+Dispatch the `code-review-analyzer` agent (Agent tool with `subagent_type="review-assistant:code-review-analyzer"`) with the following task. Substitute `{pr_number}`, `{repo}`, `{diff_path}` (the `<DIFF_PATH>` from Step 3), and `{review_md_content}`:
 
 > Review PR #{pr_number} in {repo}.
 >
+> - The PR diff has already been fetched and cached at `{diff_path}`. Use that file instead of re-running `gh pr diff`. Do NOT write scratch diffs to `/tmp/` — that path triggers a user permission prompt every session. If the `code-review` skill accepts a diff path, pass `{diff_path}` to it; otherwise read from `{diff_path}` directly.
 > - Use a confidence threshold of 0 — return EVERY finding the code-review skill produces, regardless of confidence. The caller filters later; do not filter here.
 > - In addition to any CLAUDE.md files, also check the diff against these review guidelines:
 >
