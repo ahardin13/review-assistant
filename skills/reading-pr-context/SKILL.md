@@ -178,6 +178,8 @@ Interactive consumers read only `## Findings`. Auto-mode reads both so it can re
 
 The `code:` line is the anchor that `classify-and-verify.py` uses to confirm the finding lands on the right diff line (with a ±3 line scan on mismatch). Keep backticks around the text literally — they're stripped by the parser.
 
-## Step 8: Return
+## Step 8: Hand off silently
 
-Return the session file path to the calling skill. Do not present anything to the user.
+Do NOT print a closing summary, "session file ready" message, or "returning to the orchestrator" line — any user-facing text here reads as a turn boundary and causes the orchestrator to stop before dispatching the walkthrough skill.
+
+Hold the session file path in working memory. The orchestrator's next step (Step 4 of `review-assistant.md`) will pass it to either `auto-draft-review` or `interactive-diff-review`. Proceed directly to that dispatch with no intervening output.

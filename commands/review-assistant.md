@@ -36,13 +36,15 @@ If no repo can be determined, exit: "Run from within the repo, or pass --repo ow
 
 **Call:** `Skill("review-assistant:reading-pr-context", args: "pr_number=<N> repo=<owner/repo> threshold=<T>")`
 
-This skill handles everything: PR metadata, diff, eligibility checks, session file creation, REVIEW.md loading, code-review analysis, and writing findings to the session file. It returns the session file path. **Immediately proceed to step 4 — do not pause or present any output to the user.**
+This skill handles PR metadata, diff, eligibility checks, session file creation, REVIEW.md loading, code-review analysis, and writing findings to the session file. The session file path will be the most recent file matching `$HOME/.local/state/review-assistant/sessions/pr-<N>-*.md`.
 
-### 4. Dispatch to the walkthrough skill
+**Do not stop here.** This step ends in the middle of the dispatch flow — Step 4 has not yet run. Do not print "session file ready", "returning to orchestrator", or any other closing text. Your next tool call MUST be the Skill dispatch in Step 4.
 
-Pick exactly one based on the `auto` flag:
+### 4. Dispatch to the walkthrough skill — MANDATORY NEXT ACTION
+
+This step always runs. There is no condition under which Step 3 is the last step. Pick exactly one based on the `auto` flag and invoke it now:
 
 - If `auto` is true: `Skill("review-assistant:auto-draft-review", args: "pr_number=<N> repo=<owner/repo> session_file=<path>")`
 - Otherwise: `Skill("review-assistant:interactive-diff-review", args: "pr_number=<N> repo=<owner/repo> session_file=<path>")`
 
-When the called skill completes, the review is done.
+The review is only complete after this dispatched skill finishes — not after Step 3.
