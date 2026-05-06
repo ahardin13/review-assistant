@@ -151,6 +151,126 @@ class TestClassifyAndVerify(unittest.TestCase):
         self.assertEqual(result["stats"]["inline"], 1)
         self.assertEqual(result["inline"][0]["side"], "LEFT")
 
+    def test_body_has_no_metadata_prefix(self) -> None:
+        # The posted body should be just the description — no severity,
+        # confidence, or source line bolted on the front.
+        block = (
+            "- file: src/foo.ts, line: 11, severity: high, confidence: 80, "
+            "source: bug-scan, skip: false, in_diff: true\n"
+            "  code: `const id = user.id;`\n"
+            "  Missing null check\n"
+        )
+        result = classify(block)
+        body = result["inline"][0]["body"]
+        self.assertEqual(body, "Missing null check")
+        self.assertNotIn("**high**", body)
+        self.assertNotIn("confidence", body)
+        self.assertNotIn("source:", body)
+        # Severity etc. still survive on source_finding for the caller.
+        src = result["inline"][0]["source_finding"]
+        self.assertEqual(src["severity"], "high")
+        self.assertEqual(src["confidence"], 80)
+        self.assertEqual(src["source"], "bug-scan")
+
+    def test_blank_line_inside_description_becomes_paragraph_break(self) -> None:
+        # Two paragraphs separated by a blank continuation line should render
+        # as `\n\n`-separated paragraphs in the body.
+        block = (
+            "- file: src/foo.ts, line: 11, severity: high, confidence: 80, "
+            "source: bug-scan, skip: false, in_diff: true\n"
+            "  code: `const id = user.id;`\n"
+            "  **Possible null dereference.** When `getUser()` returns null this throws.\n"
+            "\n"
+            "  **Suggestion:** wrap in a guard.\n"
+        )
+        result = classify(block)
+        body = result["inline"][0]["body"]
+        self.assertIn(
+            "**Possible null dereference.** When `getUser()` returns null this throws.\n\n**Suggestion:** wrap in a guard.",
+            body,
+        )
+
+    def test_consecutive_continuation_lines_stay_one_paragraph(self) -> None:
+        # No blank line between two continuation lines → single paragraph,
+        # joined with `\n` (Markdown renders as one paragraph).
+        block = (
+            "- file: src/foo.ts, line: 11, severity: high, confidence: 80, "
+            "source: bug-scan, skip: false, in_diff: true\n"
+            "  code: `const id = user.id;`\n"
+            "  Line one of one paragraph.\n"
+            "  Line two of the same paragraph.\n"
+        )
+        result = classify(block)
+        body = result["inline"][0]["body"]
+        self.assertEqual(body, "Line one of one paragraph.\nLine two of the same paragraph.")
+        self.assertNotIn("\n\n", body)
+
+    def test_three_paragraphs_in_description(self) -> None:
+        block = (
+            "- file: src/foo.ts, line: 11, severity: high, confidence: 80, "
+            "source: bug-scan, skip: false, in_diff: true\n"
+            "  code: `const id = user.id;`\n"
+            "  **What.** First paragraph.\n"
+            "\n"
+            "  **Why.** Second paragraph.\n"
+            "\n"
+            "  **Suggestion.** Third paragraph.\n"
+        )
+        result = classify(block)
+        body = result["inline"][0]["body"]
+        paragraphs = body.split("\n\n")
+        self.assertEqual(len(paragraphs), 3)
+        self.assertTrue(paragraphs[0].startswith("**What.**"))
+        self.assertTrue(paragraphs[1].startswith("**Why.**"))
+        self.assertTrue(paragraphs[2].startswith("**Suggestion.**"))
+
+    def test_single_line_description_still_works(self) -> None:
+        # Backwards compat: legacy single-line descriptions parse as a single
+        # paragraph with no leading metadata.
+        block = (
+            "- file: src/foo.ts, line: 11, severity: low, confidence: 60, "
+            "source: bug-scan, skip: false, in_diff: true\n"
+            "  code: `const id = user.id;`\n"
+            "  Magic number 86400 could be a named constant\n"
+        )
+        result = classify(block)
+        body = result["inline"][0]["body"]
+        self.assertEqual(body, "Magic number 86400 could be a named constant")
+
+    def test_indented_continuation_preserves_nested_indent(self) -> None:
+        # A continuation line indented MORE than the required two-space prefix
+        # should keep its extra indent so nested markdown survives.
+        block = (
+            "- file: src/foo.ts, line: 11, severity: high, confidence: 80, "
+            "source: bug-scan, skip: false, in_diff: true\n"
+            "  code: `const id = user.id;`\n"
+            "  Bullet list:\n"
+            "    - first item\n"
+            "    - second item\n"
+        )
+        result = classify(block)
+        body = result["inline"][0]["body"]
+        self.assertIn("  - first item", body)
+        self.assertIn("  - second item", body)
+
+    def test_multiple_blank_lines_collapse_to_one_break(self) -> None:
+        # Multiple consecutive blank lines should still produce exactly one
+        # paragraph break — not "\n\n\n\n" which renders weirdly.
+        block = (
+            "- file: src/foo.ts, line: 11, severity: high, confidence: 80, "
+            "source: bug-scan, skip: false, in_diff: true\n"
+            "  code: `const id = user.id;`\n"
+            "  First paragraph.\n"
+            "\n"
+            "\n"
+            "\n"
+            "  Second paragraph.\n"
+        )
+        result = classify(block)
+        body = result["inline"][0]["body"]
+        self.assertEqual(body.count("\n"), 2)
+        self.assertEqual(body, "First paragraph.\n\nSecond paragraph.")
+
 
 if __name__ == "__main__":
     unittest.main()

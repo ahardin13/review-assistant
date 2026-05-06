@@ -37,7 +37,7 @@ python3 "${CLAUDE_PLUGIN_ROOT}/scripts/classify-and-verify.py" \
 
 The script emits `{ inline, fallback, suspect, stats }` where each bucket means:
 
-- **inline** — safe to post as an inline review comment. `line` and `side` have been verified (or re-anchored within ±3 lines) against the finding's recorded `code` text. Use these verbatim.
+- **inline** — safe to post as an inline review comment. `line` and `side` have been verified (or re-anchored within ±3 lines) against the finding's recorded `code` text. Use these verbatim. Each entry's `body` is the finding's description as written by the analyzer (paragraph breaks preserved). Severity, confidence, and source live on `source_finding` for the review-body summary, **not** in the inline body — keep it that way; meta-prefixes like `**high** (confidence 87, source: bug-scan)` add noise to anyone reading the PR on github.com.
 - **fallback** — the line is outside every hunk for that file, or the finding was recorded with `in_diff: false`. Put these in the review body, not in `comments[]`.
 - **suspect** — the line IS inside a hunk, but the finding's `code` anchor didn't match the diff line or any of its ±3 neighbors. Also goes in the review body, with an explicit "line anchor uncertain" flag so the reviewer knows not to trust the number.
 
@@ -73,23 +73,30 @@ The analyzer reported these inside the diff, but the recorded line text didn't m
 
 ## Step 4: Post as a pending review
 
-**Critical:** omit the `event` field. This creates a pending review that only the author (the user running this) sees until they submit it on github.com.
+Call the shared helper. It detects an existing pending review by the current user, **silently merges** with it (preserving any user-edited bodies the user already touched on github.com), backs up the pre-DELETE state, and POSTs the combined review. Omitting the `event` field — which the helper does — is what keeps the new review pending so the user finalizes on github.com.
+
+Write the body to a scratch file first, then assemble the JSON spec with `jq -n` so multi-paragraph content (which contains literal newlines) is JSON-encoded reliably. Do **not** try to interpolate `$(jq -Rs . <<<"$BODY")` inside an outer heredoc — bash's here-string handling chokes on multi-line content and you'll get `Invalid control character` from the helper.
 
 ```bash
-gh api repos/<OWNER>/<REPO>/pulls/<PR_NUMBER>/reviews \
-  --method POST \
-  --input - <<'EOF'
-{
-  "commit_id": "<review_sha>",
-  "body": "<body text>",
-  "comments": [
-    { "path": "...", "line": N, "side": "RIGHT", "body": "..." }
-  ]
-}
+cat > $HOME/.local/state/review-assistant/pr-<PR_NUMBER>-body.txt <<'EOF'
+<body text — Why summary, separator, "pending review with N findings..." line, then any "Findings outside the diff" / "uncertain anchor" sections>
 EOF
+
+INLINE_COMMENTS=$(jq '.inline | map({path, line, side, body})' \
+  $HOME/.local/state/review-assistant/pr-<PR_NUMBER>-classified.json)
+
+jq -n \
+  --arg repo "<OWNER>/<REPO>" \
+  --argjson pr <PR_NUMBER> \
+  --arg commit "<review_sha>" \
+  --rawfile body $HOME/.local/state/review-assistant/pr-<PR_NUMBER>-body.txt \
+  --argjson comments "$INLINE_COMMENTS" \
+  --arg ip "merge" \
+  '{repo: $repo, pr: $pr, commit_id: $commit, body: $body, comments: $comments, if_pending: $ip}' \
+  | python3 "${CLAUDE_PLUGIN_ROOT}/scripts/post-pending-review.py"
 ```
 
-If the POST fails, show the error verbatim and stop — do not retry silently.
+The helper exits non-zero with `gh ... failed: <reason>` on any GitHub error — surface that verbatim to the user and stop. Do not retry silently. The helper output (stdout) is JSON: `{ review_id, review_url, comment_count, replaced_existing, merged_comments, backup_path }`. Keep the `review_url` for the final summary; if `replaced_existing` is true, mention it ("Merged with previous pending review (N comments)") so the user isn't surprised.
 
 After a successful post, append to the session file:
 
@@ -100,10 +107,11 @@ posted_mode: auto
 
 ## Step 5: Final summary (user-facing)
 
-Print exactly this shape. "Not posted" lists every finding that did NOT end up as an inline comment, grouped by reason. Omit groups with zero entries.
+Print exactly this shape. "Not posted" lists every finding that did NOT end up as an inline comment, grouped by reason. Omit groups with zero entries. If the helper reported `replaced_existing: true`, prepend the merge line below the URL.
 
 ```
 Pending review posted: https://github.com/<OWNER>/<REPO>/pull/<N>
+[Merged with previous pending review (<merged_comments> comments).]
 
 Posted inline: <inline_count>
 Posted in review body (outside diff hunks): <fallback_count>

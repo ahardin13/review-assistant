@@ -138,11 +138,27 @@ class Finding:
 
 
 def parse_session(session_text: str, section_filter: str) -> list[Finding]:
+    """Parse `## Findings` / `## Below Threshold` rows from a session file.
+
+    Continuation lines (those beginning with at least two spaces) feed the
+    current finding's `description`. Blank lines inside the continuation block
+    introduce a paragraph break — they survive into the body as `\\n\\n` so
+    Markdown renders distinct paragraphs. Consecutive non-blank continuation
+    lines are joined with `\\n` (Markdown soft break: still one paragraph).
+    """
     lines = session_text.splitlines()
     out: list[Finding] = []
 
     current_section: str | None = None
     current: Finding | None = None
+    pending_break = False
+
+    def flush() -> None:
+        nonlocal current, pending_break
+        if current is not None:
+            out.append(current)
+        current = None
+        pending_break = False
 
     for raw in lines:
         stripped = raw.strip()
@@ -154,9 +170,7 @@ def parse_session(session_text: str, section_filter: str) -> list[Finding]:
                 current_section = "below"
             else:
                 current_section = None
-            if current is not None:
-                out.append(current)
-                current = None
+            flush()
             continue
 
         if current_section is None:
@@ -166,8 +180,7 @@ def parse_session(session_text: str, section_filter: str) -> list[Finding]:
 
         head = FINDING_HEAD_RE.match(raw)
         if head:
-            if current is not None:
-                out.append(current)
+            flush()
             current = Finding(
                 file=head.group("file").strip(),
                 line=int(head.group("line")),
@@ -193,20 +206,41 @@ def parse_session(session_text: str, section_filter: str) -> list[Finding]:
         if current is None:
             continue
 
-        # Continuation lines: `  code: ...` or `  <description>` or `  <more>`
+        # Blank line inside a finding's continuation block: signals a paragraph
+        # break for the *next* non-blank continuation line. We don't append
+        # anything yet — we just remember.
+        if not stripped:
+            if current.description:
+                pending_break = True
+            continue
+
+        if not raw.startswith("  "):
+            # Non-indented, non-blank, non-finding-head content terminates the
+            # current finding's continuation block.
+            flush()
+            continue
+
         indented = raw.lstrip()
         if indented.startswith("code: "):
             code_val = indented[6:].strip()
             if code_val.startswith("`") and code_val.endswith("`") and len(code_val) >= 2:
                 code_val = code_val[1:-1]
             current.code = code_val
-        elif raw.startswith("  ") and stripped:
-            current.description = (
-                stripped if not current.description else f"{current.description}\n{stripped}"
-            )
+            continue
 
-    if current is not None:
-        out.append(current)
+        # Description continuation line. Preserve original indentation past the
+        # required two-space prefix so nested markdown (lists, fenced code)
+        # survives into the rendered body.
+        body_line = raw[2:]
+        if not current.description:
+            current.description = body_line
+        elif pending_break:
+            current.description = f"{current.description}\n\n{body_line}"
+        else:
+            current.description = f"{current.description}\n{body_line}"
+        pending_break = False
+
+    flush()
 
     # Dedup by (file, line, description)
     seen: set[tuple[str, int, str]] = set()
@@ -293,10 +327,15 @@ def _scan(index: dict[int, str], target: int, code: str | None, radius: int = 3)
 # ---- glue ------------------------------------------------------------------
 
 def format_body(f: Finding) -> str:
-    return (
-        f"**{f.severity}** (confidence {f.confidence}, source: {f.source})\n\n"
-        f"{f.description}"
-    )
+    """Render a finding's description as the GitHub comment body.
+
+    The body is just the description — multi-paragraph if the parser saw
+    blank-line breaks. Severity, confidence, and source live on the
+    `source_finding` payload for the caller's review-body summary; they are
+    deliberately NOT included inline, where they read as noise to anyone else
+    on the PR.
+    """
+    return f.description
 
 
 def main() -> int:
