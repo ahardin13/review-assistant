@@ -21,7 +21,10 @@ Data dir: `$HOME/.local/state/review-assistant` (kept OUT of `~/.claude/` so "al
 
 ```bash
 mkdir -p $HOME/.local/state/review-assistant/sessions && find $HOME/.local/state/review-assistant/sessions -name "*.md" -mtime +7 -delete
+find $HOME/.local/state/review-assistant -maxdepth 1 -name "pr-*-recreate-*.json" -mtime +7 -delete 2>/dev/null
 ```
+
+The second `find` prunes the recreate-backup payloads written by `scripts/post-pending-review.py` before each destructive DELETE; they live one level above `sessions/` so the first `find` doesn't reach them.
 
 ## Step 2: Check PR eligibility
 
@@ -134,9 +137,11 @@ Dispatch the `code-review-analyzer` agent (Agent tool with `subagent_type="revie
 
 ### 7d: Parse and deduplicate findings
 
-Parse the subagent's response. Each finding needs: `file`, `line`, `severity`, `confidence`, `source`, `description`. Skip malformed lines.
+Parse the subagent's response. The agent's output format is a metadata head row followed by an indented description continuation block; the block ends at the next `- file:` line (or end of output). Inside the block, blank lines are paragraph breaks — preserve them. Each finding needs: `file`, `line`, `severity`, `confidence`, `source`, `description`. Skip malformed entries.
 
-Merge findings at the same `file` + `line`. Keep the highest confidence score.
+**Backwards compat:** if the head row has a trailing `description: <text>` (legacy single-line format), use that as the description. Treat it as a single paragraph.
+
+Merge findings at the same `file` + `line`. Keep the highest confidence score. When merging descriptions, keep the longer/more-paragraph-shaped one rather than concatenating.
 
 ### 7e: Anchor findings to the diff
 
@@ -163,16 +168,24 @@ Partition findings by confidence. Write those with `confidence >= threshold` und
 ## Findings
 - file: src/foo.ts, line: 42, severity: high, confidence: 87, source: bug-scan, skip: false, in_diff: true
   code: `const id = user.id;`
-  Missing null check before accessing `.user.id`
+  **Possible null dereference.** When `getUser()` returns null this line throws a TypeError. The pattern appears in three callers, only one of which handles the rejected promise.
+
+  **Suggestion:** wrap the call in a guard, or change `getUser` to throw a typed error so the caller has to acknowledge the failure mode.
 - file: generated/types.ts, line: 1, severity: info, confidence: 100, source: claude-md, skip: true, in_diff: true
   code: `export type Foo = ...`
-  Generated file — skipping
+  Generated file — skipping.
 
 ## Below Threshold
 - file: src/bar.ts, line: 15, severity: low, confidence: 30, source: code-comments, in_diff: true
   code: `setTimeout(fn, 86400);`
-  Magic number 86400 could be a named constant
+  Magic number 86400 could be a named constant.
 ```
+
+Description-block rules:
+
+- Each continuation line MUST start with at least two spaces. Indented Markdown nesting (lists, fenced code blocks at four-space indent) past the prefix is preserved when the body is rendered on GitHub.
+- **Blank lines between paragraphs MUST be bare blank lines** — not two-space-indented empty lines. The classifier's parser treats truly empty raw lines as paragraph breaks (`\n\n`); a blank line that contains stray whitespace breaks differently.
+- Single-paragraph descriptions stay on a single continuation line. Don't manufacture paragraph breaks that aren't in the source finding.
 
 Interactive consumers read only `## Findings`. Auto-mode reads both so it can report what got filtered.
 
