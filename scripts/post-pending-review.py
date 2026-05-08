@@ -134,15 +134,43 @@ def extract_pending_comment(api_comment: dict) -> dict:
     return {"path": path, "position": int(position), "body": body}
 
 
+def _anchor_key(c: dict) -> tuple:
+    """Stable identity for dedup. Modern entries key on (path, line, side);
+    legacy entries key on (path, position). Forms are never collapsed across
+    each other — if a caller mixes modern and legacy for the same logical
+    spot, both survive (rare in practice; we use one form per call).
+    """
+    if c.get("line") is not None:
+        return ("modern", c["path"], int(c["line"]), c.get("side") or "RIGHT")
+    return ("legacy", c["path"], int(c["position"]))
+
+
 def merge_comments(existing: list[dict], new: list[dict]) -> list[dict]:
-    """Concatenate existing pending-review comments (first) with new ones
-    (second) and normalize each entry.
+    """Combine existing pending-review comments with newly queued ones, deduped
+    by anchor. Existing wins on collision so any user edits made on github.com
+    survive the recreate.
 
     Existing-first ordering preserves the user's reading order if they've
-    already started editing the pending review on github.com — their edits
-    stay where they were, the new ones tail the list.
+    already started editing the pending review — their edits stay where they
+    were, and any genuinely-new comments tail the list.
     """
-    return [normalize_comment(c) for c in existing] + [normalize_comment(c) for c in new]
+    out: list[dict] = []
+    seen: set[tuple] = set()
+    for c in existing:
+        norm = normalize_comment(c)
+        key = _anchor_key(norm)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(norm)
+    for c in new:
+        norm = normalize_comment(c)
+        key = _anchor_key(norm)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(norm)
+    return out
 
 
 def build_post_payload(commit_id: str, body: str, comments: list[dict]) -> dict:
@@ -201,18 +229,15 @@ def fetch_review_comments(repo: str, pr: int, review_id: int) -> list[dict]:
         "api",
         f"repos/{repo}/pulls/{pr}/reviews/{review_id}/comments",
         "--paginate",
+        "--slurp",
     ])
     out = out.strip()
     if not out:
         return []
-    # `--paginate` returns one JSON array per page, concatenated. Parse them
-    # one at a time. The simplest robust approach: split on the boundary
-    # `][` between pages and reassemble.
-    if out.startswith("["):
-        # Replace `][` page-boundaries with `,` so the whole thing is one array.
-        unified = out.replace("]\n[", ",")
-        return json.loads(unified)
-    return json.loads(out)
+    # `--slurp` wraps every page in an outer array: `[[page1...], [page2...]]`.
+    # Flatten one level so the caller sees a flat list of comment dicts.
+    pages = json.loads(out)
+    return [c for page in pages for c in page]
 
 
 def delete_review(repo: str, pr: int, review_id: int) -> None:

@@ -197,8 +197,12 @@ Phase 3 wrote queued comments using the same row format as `## Findings` (with `
 ```bash
 gh pr diff <PR_NUMBER> --repo <REPO> > $HOME/.local/state/review-assistant/pr-<PR_NUMBER>-diff.txt
 
-# Re-header `## Queued Comments` → `## Findings` so the classifier finds it.
-awk '/^## Queued Comments/{print "## Findings"; next} {print}' "<session_file>" \
+# Slice out ONLY the queued-comments section, re-headered as `## Findings`.
+# The session file still contains the analyzer's original `## Findings` block
+# (populated by reading-pr-context); a plain rename would leave two `## Findings`
+# sections, and the classifier would post dismissed findings alongside queued ones.
+awk '/^## Queued Comments/{p=1; print "## Findings"; next} /^## /{p=0} p {print}' \
+  "<session_file>" \
   > $HOME/.local/state/review-assistant/pr-<PR_NUMBER>-queued.md
 
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/classify-and-verify.py" \
@@ -243,7 +247,23 @@ jq -n \
 
 The helper writes a backup of the about-to-be-deleted state to `~/.local/state/review-assistant/pr-<N>-recreate-<TS>.json` before any destructive call, so a mid-flight failure is recoverable. On success it prints `{ review_id, review_url, comment_count, replaced_existing, merged_comments, backup_path }`. Surface the URL to the user; if `replaced_existing` is true, mention "Merged with N existing comments" in the closing summary.
 
-**About the review event (APPROVE / REQUEST_CHANGES / COMMENT):** the helper always posts a *pending* review (no `event`). This is by design — the user's "Approve" / "Request changes" / "Comment only" choice from the prompt above is held in the session file and used the next time the user submits the review on github.com. If the user picks "Approve" with zero queued comments and no overall note, skip the helper entirely and submit directly via `gh pr review --approve`; that's a one-shot action with no comments and doesn't need a pending phase.
+**About the review event (APPROVE / REQUEST_CHANGES / COMMENT):** the helper always posts a *pending* review (no `event`). This is by design — the user's "Approve" / "Request changes" / "Comment only" choice from the prompt above is held in the session file and used the next time the user submits the review on github.com.
+
+**Approve-with-nothing shortcut.** If the user picks "Approve" with zero queued comments and no overall note, you may skip the helper and submit directly via `gh pr review --approve` — but only after confirming there is no pre-existing pending review by the current user on this PR. A pending review (from a prior `--auto` pass or from manual edits on github.com) holds inline comments the user might still want; bypassing the helper would silently leave that pending state alongside the new APPROVED review.
+
+```bash
+ME=$(gh api user --jq '.login')
+EXISTING=$(gh api repos/<OWNER>/<REPO>/pulls/<PR_NUMBER>/reviews --paginate \
+  --jq "[.[] | select(.state == \"PENDING\" and .user.login == \"$ME\")] | first")
+```
+
+- `EXISTING` empty → safe to run `gh pr review --approve` directly.
+- `EXISTING` non-empty → stop and prompt the user:
+  - "Discard pending review and approve cleanly" → DELETE the pending review (`gh api --method DELETE repos/<OWNER>/<REPO>/pulls/<PR_NUMBER>/reviews/<id>`), then `gh pr review --approve`.
+  - "Keep pending review, just approve as a separate review" → run `gh pr review --approve` (the pending review stays untouched for the user to finalize on github.com).
+  - "Cancel" → exit without posting.
+
+Never run the shortcut blindly when a pending review exists.
 
 - Format all bodies with GitHub-flavored Markdown.
 - Fallback and suspect comments in `body` are never dropped.

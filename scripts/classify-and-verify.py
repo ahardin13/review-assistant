@@ -242,6 +242,10 @@ def parse_session(session_text: str, section_filter: str) -> list[Finding]:
 
     flush()
 
+    # Drop findings with empty descriptions: format_body returns the description
+    # verbatim, and POSTing a comment with an empty body 422s the entire review.
+    out = [f for f in out if f.description.strip()]
+
     # Dedup by (file, line, description)
     seen: set[tuple[str, int, str]] = set()
     deduped: list[Finding] = []

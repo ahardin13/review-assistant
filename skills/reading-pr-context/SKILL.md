@@ -21,7 +21,10 @@ Data dir: `$HOME/.local/state/review-assistant` (kept OUT of `~/.claude/` so "al
 
 ```bash
 mkdir -p $HOME/.local/state/review-assistant/sessions && find $HOME/.local/state/review-assistant/sessions -name "*.md" -mtime +7 -delete
+find $HOME/.local/state/review-assistant -maxdepth 1 -name "pr-*-recreate-*.json" -mtime +7 -delete 2>/dev/null
 ```
+
+The second `find` prunes the recreate-backup payloads written by `scripts/post-pending-review.py` before each destructive DELETE; they live one level above `sessions/` so the first `find` doesn't reach them.
 
 ## Step 2: Check PR eligibility
 

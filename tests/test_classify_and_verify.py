@@ -253,6 +253,22 @@ class TestClassifyAndVerify(unittest.TestCase):
         self.assertIn("  - first item", body)
         self.assertIn("  - second item", body)
 
+    def test_empty_description_finding_is_dropped(self) -> None:
+        # Findings whose description parses as empty must be dropped — posting
+        # an inline comment with body:"" 422s the entire review.
+        block = (
+            "- file: src/foo.ts, line: 11, severity: high, confidence: 80, "
+            "source: bug-scan, skip: false, in_diff: true\n"
+            "  code: `const id = user.id;`\n"
+            "- file: src/foo.ts, line: 12, severity: low, confidence: 60, "
+            "source: bug-scan, skip: false, in_diff: true\n"
+            "  code: `return id;`\n"
+            "  Real description here\n"
+        )
+        result = classify(block)
+        self.assertEqual(result["stats"]["total"], 1)
+        self.assertEqual(result["inline"][0]["line"], 12)
+
     def test_multiple_blank_lines_collapse_to_one_break(self) -> None:
         # Multiple consecutive blank lines should still produce exactly one
         # paragraph break — not "\n\n\n\n" which renders weirdly.

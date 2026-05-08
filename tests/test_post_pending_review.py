@@ -173,6 +173,49 @@ class TestMergeComments(unittest.TestCase):
         self.assertEqual(len(out), 1)
         self.assertEqual(out[0]["body"], "edited")
 
+    def test_dedup_modern_anchor_keeps_existing(self) -> None:
+        # Re-running --auto regenerates analyzer findings at the same anchors.
+        # Existing must win so any user edits survive the recreate.
+        existing = [
+            {"path": "src/a.ts", "line": 42, "side": "RIGHT", "body": "edited by user"},
+        ]
+        new = [
+            {"path": "src/a.ts", "line": 42, "side": "RIGHT", "body": "fresh analyzer body"},
+        ]
+        out = PPR.merge_comments(existing, new)
+        self.assertEqual(len(out), 1)
+        self.assertEqual(out[0]["body"], "edited by user")
+
+    def test_dedup_legacy_anchor_keeps_existing(self) -> None:
+        existing = [{"path": "src/a.ts", "position": 7, "body": "edited"}]
+        new = [{"path": "src/a.ts", "position": 7, "body": "regenerated"}]
+        out = PPR.merge_comments(existing, new)
+        self.assertEqual(len(out), 1)
+        self.assertEqual(out[0]["body"], "edited")
+
+    def test_dedup_different_sides_are_distinct(self) -> None:
+        # Same path+line on RIGHT and LEFT are different anchors (one is the
+        # added line, the other the deleted line).
+        existing = [
+            {"path": "src/a.ts", "line": 42, "side": "RIGHT", "body": "right"},
+        ]
+        new = [
+            {"path": "src/a.ts", "line": 42, "side": "LEFT", "body": "left"},
+        ]
+        out = PPR.merge_comments(existing, new)
+        self.assertEqual(len(out), 2)
+
+    def test_dedup_within_existing(self) -> None:
+        # Defensive: if the existing pending somehow contains duplicates
+        # (e.g. corrupt prior recreate), collapse them.
+        existing = [
+            {"path": "src/a.ts", "position": 5, "body": "first"},
+            {"path": "src/a.ts", "position": 5, "body": "second"},
+        ]
+        out = PPR.merge_comments(existing, [])
+        self.assertEqual(len(out), 1)
+        self.assertEqual(out[0]["body"], "first")
+
 
 class TestBuildPostPayload(unittest.TestCase):
     def test_omits_event_field(self) -> None:
