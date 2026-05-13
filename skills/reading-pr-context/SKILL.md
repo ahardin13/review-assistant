@@ -143,6 +143,8 @@ Parse the subagent's response. The agent's output format is a metadata head row 
 
 Merge findings at the same `file` + `line`. Keep the highest confidence score. When merging descriptions, keep the longer/more-paragraph-shaped one rather than concatenating.
 
+Serialize the merged list as JSON to `$HOME/.local/state/review-assistant/pr-<NUMBER>-findings.json` so Step 7e can read it.
+
 ### 7e: Anchor findings to the diff
 
 Before writing findings to the session file, attach a line-text anchor (`code:` field) so downstream consumers can verify that comments land on the right lines.
@@ -152,7 +154,8 @@ Before writing findings to the session file, attach a line-text anchor (`code:` 
 Use a one-shot inline `python3` invocation (no separate `.py` file). Read the cached diff once, build an in-memory `(file, right_line) -> text` / `(file, left_line) -> text` index, look up each finding's `(file, line)`, and emit decorated findings to stdout. ~25 lines is enough — example shape:
 
 ```bash
-python3 - "$HOME/.local/state/review-assistant/pr-<NUMBER>-diff.txt" <<'PY' < findings.json > findings.anchored.jsonl
+DIR="$HOME/.local/state/review-assistant"
+python3 - "$DIR/pr-<NUMBER>-diff.txt" "$DIR/pr-<NUMBER>-findings.json" <<'PY' > "$DIR/pr-<NUMBER>-findings.anchored.jsonl"
 import json, re, sys
 right, left, cur, rl, ll = {}, {}, None, 0, 0
 DIFF = re.compile(r"^diff --git a/(.+?) b/(.+)$")
@@ -165,7 +168,7 @@ for raw in open(sys.argv[1]):
     if   raw[:1] == "+": right[cur][rl] = raw[1:]; rl += 1
     elif raw[:1] == "-": left[cur][ll]  = raw[1:]; ll += 1
     elif raw[:1] == " ": right[cur][rl] = left[cur][ll] = raw[1:]; rl += 1; ll += 1
-for f in json.load(sys.stdin):
+for f in json.load(open(sys.argv[2])):
     p = f["file"]                              # strip repo-absolute prefix if any
     cand = next((k for k in right if p == k or p.endswith("/" + k)), p)
     f["file"] = cand
@@ -174,6 +177,8 @@ for f in json.load(sys.stdin):
     print(json.dumps(f))
 PY
 ```
+
+Findings come in via `sys.argv[2]` rather than stdin because `python3 -` consumes stdin for the heredoc script body — `< findings.json` would be silently dropped.
 
 For each finding:
 
