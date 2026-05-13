@@ -145,14 +145,40 @@ Merge findings at the same `file` + `line`. Keep the highest confidence score. W
 
 ### 7e: Anchor findings to the diff
 
-Before writing findings to the session file, attach a line-text anchor so downstream consumers can verify that comments land on the right lines.
+Before writing findings to the session file, attach a line-text anchor (`code:` field) so downstream consumers can verify that comments land on the right lines.
 
-Build an in-memory index of the fetched diff: for each file, walk the hunk bodies and record `(right_line) -> line_text` for `+` and ` ` lines, and `(left_line) -> line_text` for `-` and ` ` lines. This is a lightweight read-only index used only for anchor lookup during session-file writing — do NOT re-derive it at post time. The full classifier that enforces line anchoring (`scripts/classify-and-verify.py`, invoked by `auto-draft-review` and `interactive-diff-review` at POST time) parses the diff the same way; do not reimplement its classification logic here.
+**Do NOT write a standalone `/tmp/anchor-*.py` script for this step.** The authoritative anchorer is `scripts/classify-and-verify.py`, which runs at POST time inside `auto-draft-review` / `interactive-diff-review` and includes ±3-line text-match re-anchoring as a fallback. Step 7e's only job is to populate the `code:` text — a freelanced script duplicates the diff parser already in the plugin and adds drift risk for no benefit.
 
-For each finding, look up `(file, line)` in the RIGHT-side index first, then LEFT-side:
+Use a one-shot inline `python3` invocation (no separate `.py` file). Read the cached diff once, build an in-memory `(file, right_line) -> text` / `(file, left_line) -> text` index, look up each finding's `(file, line)`, and emit decorated findings to stdout. ~25 lines is enough — example shape:
 
-- If found: set `code: \`<exact line text>\`` and `in_diff: true`.
-- If the file isn't in the diff, or the line isn't in any hunk for that file: set `in_diff: false`. Do NOT drop the finding — auto mode still reports it, and the verifier may re-anchor by text match later.
+```bash
+python3 - "$HOME/.local/state/review-assistant/pr-<NUMBER>-diff.txt" <<'PY' < findings.json > findings.anchored.jsonl
+import json, re, sys
+right, left, cur, rl, ll = {}, {}, None, 0, 0
+DIFF = re.compile(r"^diff --git a/(.+?) b/(.+)$")
+HUNK = re.compile(r"^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@")
+for raw in open(sys.argv[1]):
+    raw = raw.rstrip("\n")
+    if (m := DIFF.match(raw)): cur = m.group(2); right.setdefault(cur, {}); left.setdefault(cur, {}); continue
+    if (m := HUNK.match(raw)): ll, rl = int(m.group(1)), int(m.group(2)); continue
+    if cur is None or raw[:3] in ("+++", "---"): continue
+    if   raw[:1] == "+": right[cur][rl] = raw[1:]; rl += 1
+    elif raw[:1] == "-": left[cur][ll]  = raw[1:]; ll += 1
+    elif raw[:1] == " ": right[cur][rl] = left[cur][ll] = raw[1:]; rl += 1; ll += 1
+for f in json.load(sys.stdin):
+    p = f["file"]                              # strip repo-absolute prefix if any
+    cand = next((k for k in right if p == k or p.endswith("/" + k)), p)
+    f["file"] = cand
+    f["code"] = right.get(cand, {}).get(f["line"]) or left.get(cand, {}).get(f["line"])
+    f["in_diff"] = cand in right
+    print(json.dumps(f))
+PY
+```
+
+For each finding:
+
+- If `code` is populated: render `code: \`<exact line text>\`` and `in_diff: true` in Step 7f.
+- If the file isn't in the diff, or the line isn't in any hunk: set `in_diff: false`. **Do NOT drop the finding** — auto mode still reports it, and the post-time classifier may re-anchor it by text match.
 
 ### 7f: Write findings to session file
 
